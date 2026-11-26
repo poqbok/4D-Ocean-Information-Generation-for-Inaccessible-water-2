@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>해양 수온·염분 예측기 — 위도·경도로 한반도 주변 바다 수온과 염분 확인</title>
+<meta name="description" content="위도·경도를 입력하거나 지도를 클릭하면 한반도 주변 해역의 월별·수심별 수온과 염분을 추정해 주는 웹 도구 (KODC 정선해양 관측자료 기반)">
+<meta property="og:title" content="해양 수온·염분 예측기">
+<meta property="og:description" content="위도·경도를 입력하면 지도에 위치를 표시하고 수온·염분을 추정합니다.">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{
+  --bg:#f3f6f9; --card:#fff; --ink:#14212e; --muted:#5d6e7e; --line:#dbe3ea;
+  --navy:#0b3a5b; --teal:#0f7f8f; --temp:#d4562a; --sal:#1f6fb5;
+  --good:#1e8a4c; --mid:#c98a00; --low:#c0392b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;color:var(--ink);background:var(--bg);line-height:1.5;-webkit-text-size-adjust:100%}
+header{background:linear-gradient(135deg,var(--navy),var(--teal));color:#fff;padding:14px 20px}
+header h1{margin:0;font-size:1.25rem;letter-spacing:-.01em}
+header p{margin:2px 0 0;font-size:.85rem;opacity:.88}
+.layout{display:grid;grid-template-columns:420px 1fr;height:calc(100vh - 66px);min-height:560px}
+.panel{overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px;border-right:1px solid var(--line);background:var(--bg)}
+.mapwrap{position:relative;min-height:420px}
+#map{position:absolute;inset:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card h2{margin:0 0 10px;font-size:.95rem;color:var(--navy)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:3px}
+input,select{width:100%;font:inherit;font-size:.95rem;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
+button{font:inherit;cursor:pointer}
+.go{width:100%;margin-top:12px;padding:10px;border:0;border-radius:8px;background:var(--navy);color:#fff;font-weight:600}
+.go:hover{background:#0a2f4a}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:.78rem;color:var(--ink)}
+.chip:hover{border-color:var(--teal);color:var(--teal)}
+.hint{font-size:.78rem;color:var(--muted);margin:8px 0 0}
+.err{color:var(--low);font-size:.85rem;margin-top:8px;min-height:1.2em}
+.big{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.metric{border-radius:10px;padding:12px;background:#f7f9fb;border:1px solid var(--line)}
+.metric .k{font-size:.78rem;color:var(--muted)}
+.metric .v{font-size:1.9rem;font-weight:700;line-height:1.15}
+.metric .u{font-size:.9rem;font-weight:500;color:var(--muted);margin-left:2px}
+.metric.t .v{color:var(--temp)} .metric.s .v{color:var(--sal)}
+.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.78rem;font-weight:600;color:#fff}
+.b3{background:var(--good)} .b2{background:var(--mid)} .b1{background:var(--low)}
+.meta{margin:10px 0 0;font-size:.82rem;color:var(--muted)}
+.meta b{color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th,td{padding:5px 6px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:600;font-size:.74rem}
+tr.sel td{background:#eaf4f6;font-weight:600}
+.charts svg{width:100%;height:auto;display:block}
+.legend{font-size:.74rem;color:var(--muted);margin-top:4px}
+.toggle{position:absolute;z-index:500;top:10px;right:10px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:.8rem;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.toggle label{display:flex;gap:6px;align-items:center;margin:0;color:var(--ink);font-size:.8rem}
+.toggle input{width:auto}
+.note{font-size:.76rem;color:var(--muted)}
+.note p{margin:4px 0}
+.warn{background:#fff6e5;border:1px solid #f0d9a4;color:#6b4a00;border-radius:8px;padding:8px 10px;font-size:.82rem;margin-top:10px}
+.empty{color:var(--muted);font-size:.9rem;text-align:center;padding:18px 4px}
+footer{padding:10px 20px;font-size:.75rem;color:var(--muted)}
+@media (max-width:860px){
+  .layout{grid-template-columns:1fr;height:auto}
+  .mapwrap{order:-1;height:55vh;min-height:320px}
+  .panel{border-right:0}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>🌊 해양 수온·염분 예측기</h1>
+  <p>위도·경도를 입력하거나 지도를 클릭하면 주변 관측 정점을 이용해 월별·수심별 수온과 염분을 추정합니다.</p>
+</header>
+
+<div class="layout">
+  <aside class="panel" aria-label="입력 및 결과">
+    <section class="card">
+      <h2>1. 위치와 조건 입력</h2>
+      <div class="row">
+        <div><label for="lat">위도 (°N)</label><input id="lat" type="number" step="0.0001" inputmode="decimal" value="35.9000"></div>
+        <div><label for="lon">경도 (°E)</label><input id="lon" type="number" step="0.0001" inputmode="decimal" value="125.8000"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label for="month">월</label><select id="month"></select></div>
+        <div><label for="depth">수심</label><select id="depth"></select></div>
+      </div>
+      <button class="go" id="run" type="button">수온·염분 예측하기</button>
+      <div class="err" id="err" role="alert"></div>
+      <div class="chips" id="examples" aria-label="예시 지점"></div>
+      <p class="hint">지도를 클릭해도 그 위치가 입력됩니다.</p>
+    </section>
+
+    <section class="card" id="result" aria-live="polite">
+      <h2>2. 예측 결과</h2>
+      <div class="empty">위치를 입력하고 예측 버튼을 눌러 주세요.</div>
+    </section>
+
+    <section class="card charts" id="charts" hidden>
+      <h2>3. 선택한 위치의 월별 변화</h2>
+      <div id="chartT"></div>
+      <div id="chartS" style="margin-top:6px"></div>
+      <div class="legend">● 관측 정점 기반 &nbsp; ◌ 보간(관측이 없는 달) &nbsp; 선택한 월은 세로 띠로 표시</div>
+    </section>
+
+    <section class="card" id="profileCard" hidden>
+      <h2>4. 수심별 값 (선택한 월)</h2>
+      <div id="profile"></div>
+    </section>
+
+    <section class="card note">
+      <h2>이 예측은 어떻게 만들어지나요?</h2>
+      <p>2026년 1~10월 KODC 정선해양 관측(207개 정점, 표준수심 0·10·20·30·50 m)에서, 선택한 월·수심에 관측값이 있는 정점 중 <b>가장 가까운 5곳</b>을 거리 제곱의 역수로 가중 평균(IDW)합니다.</p>
+      <p>7월처럼 관측이 없는 달은 앞뒤 달 예측값을 직선으로 이어 추정합니다.</p>
+      <p>정점 하나를 빼고 나머지로 맞혀 보는 교차검증에서 평균 오차는 수온 약 <b>0.9 °C</b>, 염분 약 <b>0.17 psu</b>였습니다(정점 간격 20~40 km 안쪽에서의 값이며, 60 km 넘게 떨어진 곳은 검증되지 않았습니다).</p>
+      <p>관측은 해당 연도(2026년) 한 번뿐이라 연도별 변동·일 단위 변화·조석·연안 담수 영향은 반영되지 않습니다. 육지나 항만 안쪽 좌표도 계산은 되지만 의미가 없습니다. <b>연구·학습용 추정값이며 항해·조업 등 안전과 직결된 판단에는 쓰지 마세요.</b></p>
+    </section>
+  </aside>
+
+  <main class="mapwrap">
+    <div id="map" role="application" aria-label="예측 위치 지도"></div>
+    <div class="toggle"><label><input type="checkbox" id="showSt" checked> 관측 정점 표시</label></div>
+  </main>
+</div>
+<footer id="foot"></footer>
+
+<script src="data.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+"use strict";
+var D = window.OCEAN_DATA;
+var DEPTHS = D.depths;
+var K = 5, POWER = 2, MAX_KM = 200, GOOD_KM = 50, OK_KM = 100;
+var TIER = {3:"높음", 2:"보통", 1:"낮음"};
+var EXAMPLES = [
+  ["서해 군산 앞바다", 35.9, 125.8],
+  ["남해 거문도 부근", 34.0, 127.6],
+  ["제주 남쪽", 32.8, 126.6],
+  ["동해 포항 앞바다", 36.2, 130.0],
+  ["울릉도 부근", 37.5, 131.0]
+];
+
+/* ---------- 예측 로직 ---------- */
+function hav(la1, lo1, la2, lo2){
+  var p = Math.PI/180;
+  var a = Math.pow(Math.sin((la2-la1)*p/2),2) +
+          Math.cos(la1*p)*Math.cos(la2*p)*Math.pow(Math.sin((lo2-lo1)*p/2),2);
+  return 12742*Math.asin(Math.sqrt(a));
+}
+function tierOf(km){ return km <= GOOD_KM ? 3 : (km <= OK_KM ? 2 : 1); }
+
+/* 한 달·한 수심: 가까운 K개 정점의 IDW. 관측이 없으면 null */
+function predictDirect(lat, lon, m, zi){
+  var c = [], i, s, o;
+  for (i = 0; i < D.stations.length; i++){
+    s = D.stations[i]; o = s.o[m];
+    if (!o || o.t[zi] == null || o.s[zi] == null) continue;
+    c.push({s:s, o:o, d:hav(lat, lon, s.lat, s.lon)});
+  }
+  if (!c.length) return null;
+  c.sort(function(a,b){ return a.d - b.d; });
+  var nb = c.slice(0, K), sw = 0, T = 0, S = 0;
+  nb.forEach(function(n){ n.w = 1/Math.pow(Math.max(n.d,1), POWER); sw += n.w; });
+  nb.forEach(function(n){ n.w /= sw; T += n.w*n.o.t[zi]; S += n.w*n.o.s[zi]; });
+  return {T:T, S:S, nn:nb[0].d, nb:nb};
+}
+
+/* 12개월 전체. 관측이 없거나 너무 먼 달은 앞뒤 달 사이로 보간(연말·연초는 순환) */
+function predictYear(lat, lon, zi){
+  var out = [], m;
+  for (m = 1; m <= 12; m++){
+    var r = predictDirect(lat, lon, m, zi);
+    if (r && r.nn <= MAX_KM){
+      out[m] = {kind:"direct", T:r.T, S:r.S, nn:r.nn, tier:tierOf(r.nn), nb:r.nb};
+    } else {
+      out[m] = {kind:"none", nn:r ? r.nn : null};
+    }
+  }
+  var direct = out.map(function(x){ return x && x.kind === "direct"; });
+  for (m = 1; m <= 12; m++){
+    if (direct[m]) continue;
+    var pm = null, pk = 0, nm = null, nk = 0, k, idx;
+    for (k = 1; k < 12; k++){
+      idx = ((m-1-k)%12+12)%12 + 1;
+      if (direct[idx]){ pm = idx; pk = k; break; }
+    }
+    for (k = 1; k < 12; k++){
+      idx = ((m-1+k)%12) + 1;
+      if (direct[idx]){ nm = idx; nk = k; break; }
+    }
+    if (pm == null || nm == null || pm === nm) continue;
+    var a = out[pm], b = out[nm], tot = pk + nk;
+    var t = tot <= 2 ? Math.min(2, a.tier, b.tier) : 1;
+    out[m] = {kind:"interp", T:(a.T*nk + b.T*pk)/tot, S:(a.S*nk + b.S*pk)/tot,
+              from:pm, to:nm, tier:t};
+  }
+  return out;
+}
+
+/* 테스트용 노출 */
+window.__ocean = {predictDirect:predictDirect, predictYear:predictYear, hav:hav};
+
+/* ---------- 화면 ---------- */
+var $ = function(id){ return document.getElementById(id); };
+var elLat=$("lat"), elLon=$("lon"), elMonth=$("month"), elDepth=$("depth"), elErr=$("err");
+
+(function init(){
+  var i, o;
+  for (i = 1; i <= 12; i++){
+    o = document.createElement("option");
+    o.value = i;
+    o.textContent = i + "월" + (D.meta.months.indexOf(i) < 0 ? " (관측 없음·보간)" : "");
+    elMonth.appendChild(o);
+  }
+  DEPTHS.forEach(function(z, zi){
+    var o = document.createElement("option");
+    o.value = zi; o.textContent = z + " m" + (z === 0 ? " (표층)" : "");
+    elDepth.appendChild(o);
+  });
+  var box = $("examples");
+  EXAMPLES.forEach(function(e){
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = e[0];
+    b.addEventListener("click", function(){ elLat.value = e[1].toFixed(4); elLon.value = e[2].toFixed(4); run(true); });
+    box.appendChild(b);
+  });
+  var mNow = new Date().getMonth() + 1;
+  elMonth.value = D.meta.months.indexOf(mNow) >= 0 ? mNow : 8;
+  $("foot").textContent = "자료: " + D.meta.source + " " + D.meta.period + " · 정점 " + D.meta.stations +
+    "개 · 관측 " + D.meta.records.toLocaleString("ko-KR") + "건 · 지도 © OpenStreetMap 기여자";
+})();
+
+/* 지도 */
+var map = L.map("map", {zoomControl:true}).setView([35.6, 127.6], 6);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom:12, attribution:"© OpenStreetMap contributors"
+}).addTo(map);
+var stLayer = L.layerGroup().addTo(map);
+D.stations.forEach(function(s){
+  L.circleMarker([s.lat, s.lon], {radius:3, weight:1, color:"#0b3a5b", fillColor:"#6fb7d6", fillOpacity:.85})
+    .bindTooltip("정점 " + s.id + " (" + s.a + ")")
+    .addTo(stLayer);
+});
+$("showSt").addEventListener("change", function(){
+  if (this.checked) map.addLayer(stLayer); else map.removeLayer(stLayer);
+});
+var pointLayer = L.layerGroup().addTo(map);
+map.on("click", function(e){
+  elLat.value = e.latlng.lat.toFixed(4);
+  elLon.value = ((e.latlng.lng + 540) % 360 - 180).toFixed(4);
+  run(false);
+});
+
+function fmt(v, d){ return v.toFixed(d); }
+function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+
+function drawMap(lat, lon, res, fly){
+  pointLayer.clearLayers();
+  var pin = L.circleMarker([lat, lon], {radius:9, weight:3, color:"#fff", fillColor:"#d4562a", fillOpacity:1}).addTo(pointLayer);
+  pin.bindTooltip("선택 위치 " + lat.toFixed(4) + "°N, " + lon.toFixed(4) + "°E");
+  var pts = [[lat, lon]];
+  if (res && res.kind === "direct"){
+    res.nb.forEach(function(n){
+      L.polyline([[lat, lon], [n.s.lat, n.s.lon]], {color:"#0f7f8f", weight:1 + n.w*5, opacity:.75, dashArray:"4 4"}).addTo(pointLayer);
+      L.circleMarker([n.s.lat, n.s.lon], {radius:6, weight:2, color:"#0f7f8f", fillColor:"#fff", fillOpacity:1})
+        .bindTooltip("정점 " + n.s.id + " · 가중치 " + Math.round(n.w*100) + "%")
+        .addTo(pointLayer);
+      pts.push([n.s.lat, n.s.lon]);
+    });
+  }
+  if (fly){
+    if (pts.length > 1) map.fitBounds(L.latLngBounds(pts).pad(0.4), {maxZoom:9});
+    else map.setView([lat, lon], Math.max(map.getZoom(), 7));
+  }
+}
+
+/* 차트 (월별 선그래프, 의존성 없는 SVG) */
+function lineChart(el, series, unit, color, sel, dec){
+  var W = 380, H = 150, L0 = 38, R0 = 10, T0 = 12, B0 = 24;
+  var vals = series.filter(function(x){ return x; }).map(function(x){ return x.v; });
+  if (!vals.length){ el.innerHTML = '<div class="empty">표시할 값이 없습니다.</div>'; return; }
+  var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  var pad = (hi - lo) * 0.15 || 0.5; lo -= pad; hi += pad;
+  var X = function(i){ return L0 + (W-L0-R0) * (i/11); };
+  var Y = function(v){ return T0 + (H-T0-B0) * (1 - (v-lo)/(hi-lo)); };
+  var s = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="월별 '+unit+' 변화">';
+  s += '<rect x="'+(X(sel)-(W-L0-R0)/22)+'" y="'+T0+'" width="'+((W-L0-R0)/11)+'" height="'+(H-T0-B0)+'" fill="'+color+'" opacity=".10"/>';
+  for (var g = 0; g <= 3; g++){
+    var gv = lo + (hi-lo)*g/3, gy = Y(gv);
+    s += '<line x1="'+L0+'" x2="'+(W-R0)+'" y1="'+gy+'" y2="'+gy+'" stroke="#e3e9ee"/>';
+    s += '<text x="'+(L0-5)+'" y="'+(gy+3)+'" text-anchor="end" font-size="9" fill="#5d6e7e">'+gv.toFixed(dec)+'</text>';
+  }
+  for (var i = 0; i < 12; i++){
+    s += '<text x="'+X(i)+'" y="'+(H-8)+'" text-anchor="middle" font-size="9" fill="#5d6e7e">'+(i+1)+'월</text>';
+  }
+  var d = "", pen = false;
+  series.forEach(function(p, i){
+    if (!p){ pen = false; return; }
+    d += (pen ? "L" : "M") + X(i).toFixed(1) + " " + Y(p.v).toFixed(1) + " ";
+    pen = true;
+  });
+  s += '<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="1.8"/>';
+  series.forEach(function(p, i){
+    if (!p) return;
+    var r = (i+1) === sel ? 5 : 3.5;
+    if (p.interp) s += '<circle cx="'+X(i)+'" cy="'+Y(p.v)+'" r="'+r+'" fill="#fff" stroke="'+color+'" stroke-width="1.6"/>';
+    else s += '<circle cx="'+X(i)+'" cy="'+Y(p.v)+'" r="'+r+'" fill="'+color+'"/>';
+  });
+  s += '<text x="'+(L0)+'" y="9" font-size="9" fill="#5d6e7e">'+unit+'</text></svg>';
+  el.innerHTML = s;
+}
+
+function render(lat, lon, m, zi){
+  var yr = predictYear(lat, lon, zi);
+  var r = yr[m], box = $("result");
+  var html = '<h2>2. 예측 결과</h2>';
+  if (!r || r.kind === "none"){
+    var nn = r && r.nn != null ? " 가장 가까운 관측 정점이 약 " + Math.round(r.nn) + " km 떨어져 있습니다." : "";
+    html += '<div class="empty">이 위치·조건은 예측할 수 없습니다.' + esc(nn) +
+            '<br>관측 정점 범위(대략 31.5~38.2°N, 124~132.2°E) 안의 바다 좌표를 입력해 보세요.</div>';
+    box.innerHTML = html;
+    $("charts").hidden = false; renderCharts(yr, m, zi); renderProfile(lat, lon, m, yr);
+    return null;
+  }
+  html += '<div class="big">' +
+    '<div class="metric t"><div class="k">수온</div><div class="v">'+fmt(r.T,1)+'<span class="u">°C</span></div></div>' +
+    '<div class="metric s"><div class="k">염분</div><div class="v">'+fmt(r.S,2)+'<span class="u">psu</span></div></div></div>';
+  html += '<p class="meta"><span class="badge b'+r.tier+'">신뢰도 '+TIER[r.tier]+'</span> &nbsp;' +
+          m + '월 · ' + DEPTHS[zi] + ' m</p>';
+  if (r.kind === "direct"){
+    html += '<p class="meta">가장 가까운 관측 정점 <b>' + esc(r.nb[0].s.id) + '</b> (' + esc(r.nb[0].s.a) + ') — 약 <b>' + fmt(r.nn,1) + ' km</b></p>';
+    html += '<table><thead><tr><th>사용한 정점</th><th>거리</th><th>가중치</th><th>수온</th><th>염분</th><th>관측일</th></tr></thead><tbody>';
+    r.nb.forEach(function(n){
+      html += '<tr><td>'+esc(n.s.id)+'</td><td>'+fmt(n.d,1)+' km</td><td>'+Math.round(n.w*100)+'%</td><td>'+
+        fmt(n.o.t[zi],1)+'</td><td>'+fmt(n.o.s[zi],2)+'</td><td>'+esc(n.o.d)+'</td></tr>';
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<div class="warn">' + m + '월에는 이 위치 근처 관측이 없어 <b>' + r.from + '월과 ' + r.to + '월 예측값 사이를 직선으로 보간</b>한 추정치입니다.</div>';
+  }
+  if (r.nn > OK_KM) html += '<div class="warn">가장 가까운 관측 정점이 멀어 오차가 클 수 있습니다.</div>';
+  html += '<p class="meta">※ 육지·항만 안쪽 좌표는 값이 나와도 의미가 없습니다.</p>';
+  box.innerHTML = html;
+  $("charts").hidden = false;
+  renderCharts(yr, m, zi);
+  renderProfile(lat, lon, m, yr);
+  return r;
+}
+
+function renderCharts(yr, m, zi){
+  var tS = [], sS = [];
+  for (var i = 1; i <= 12; i++){
+    var r = yr[i];
+    if (r && r.kind !== "none"){
+      tS.push({v:r.T, interp:r.kind === "interp"});
+      sS.push({v:r.S, interp:r.kind === "interp"});
+    } else { tS.push(null); sS.push(null); }
+  }
+  lineChart($("chartT"), tS, "수온 (°C), 수심 " + DEPTHS[zi] + " m", "#d4562a", m, 1);
+  lineChart($("chartS"), sS, "염분 (psu), 수심 " + DEPTHS[zi] + " m", "#1f6fb5", m, 2);
+}
+
+function renderProfile(lat, lon, m, yrSel){
+  var card = $("profileCard"), h = '<table><thead><tr><th>수심</th><th>수온 (°C)</th><th>염분 (psu)</th><th>신뢰도</th></tr></thead><tbody>', any = false;
+  var cur = Number(elDepth.value);
+  DEPTHS.forEach(function(z, zi){
+    var y = predictYear(lat, lon, zi)[m];
+    if (!y || y.kind === "none"){
+      h += '<tr><td>'+z+' m</td><td colspan="3" style="text-align:right;color:#5d6e7e">자료 없음</td></tr>';
+      return;
+    }
+    any = true;
+    h += '<tr'+(zi === cur ? ' class="sel"' : '')+'><td>'+z+' m</td><td>'+fmt(y.T,1)+'</td><td>'+fmt(y.S,2)+'</td><td>'+TIER[y.tier]+(y.kind === "interp" ? " (보간)" : "")+'</td></tr>';
+  });
+  h += '</tbody></table>';
+  $("profile").innerHTML = h;
+  card.hidden = !any;
+}
+
+function run(fly){
+  elErr.textContent = "";
+  var lat = parseFloat(elLat.value), lon = parseFloat(elLon.value);
+  var m = parseInt(elMonth.value, 10), zi = parseInt(elDepth.value, 10);
+  if (!isFinite(lat) || !isFinite(lon)){ elErr.textContent = "위도와 경도를 숫자로 입력해 주세요."; return; }
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180){ elErr.textContent = "위도는 -90~90, 경도는 -180~180 범위여야 합니다."; return; }
+  var r = render(lat, lon, m, zi);
+  drawMap(lat, lon, r, fly !== false);
+  try {
+    var u = new URL(location.href);
+    u.searchParams.set("lat", lat.toFixed(4)); u.searchParams.set("lon", lon.toFixed(4));
+    u.searchParams.set("m", m); u.searchParams.set("z", DEPTHS[zi]);
+    history.replaceState(null, "", u);
+  } catch (e) {}
+}
+
+$("run").addEventListener("click", function(){ run(true); });
+[elLat, elLon].forEach(function(el){ el.addEventListener("keydown", function(e){ if (e.key === "Enter") run(true); }); });
+elMonth.addEventListener("change", function(){ run(false); });
+elDepth.addEventListener("change", function(){ run(false); });
+
+/* ?lat=..&lon=..&m=..&z=.. 로 바로 열기 (랜딩 페이지 링크용) */
+(function fromUrl(){
+  var q = new URLSearchParams(location.search);
+  var la = parseFloat(q.get("lat")), lo = parseFloat(q.get("lon"));
+  var m = parseInt(q.get("m"), 10), z = parseInt(q.get("z"), 10);
+  if (isFinite(la)) elLat.value = la;
+  if (isFinite(lo)) elLon.value = lo;
+  if (m >= 1 && m <= 12) elMonth.value = m;
+  if (DEPTHS.indexOf(z) >= 0) elDepth.value = DEPTHS.indexOf(z);
+  run(true);
+})();
+})();
+</script>
+</body>
+</html>
