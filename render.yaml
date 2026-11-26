@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: ocean-ts-predictor
+    runtime: static
+    buildCommand: echo "static site"
+    staticPublishPath: .
